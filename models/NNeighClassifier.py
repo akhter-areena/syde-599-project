@@ -1,23 +1,16 @@
 import os, pickle
-import numpy as np
-import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.cluster import AgglomerativeClustering
 from sklearn.neighbors import NearestNeighbors
-from sklearn.metrics import accuracy_score, r2_score
-import matplotlib
-import matplotlib.pyplot as plt
 from collections import defaultdict
 import heapq
 from util.helpers import playlistToSparseMatrixEntry, getPlaylistTracks
 
 class NNeighClassifier():
-    def __init__(self, playlists, sparsePlaylists, songs, reTrain=False, name="NNClassifier.pkl"):
+    def __init__(self, playlists, sparsePlaylists, tracks, reTrain=False, name="NNClassifier.pkl"):
         self.pathName = name
         self.name = "NNC"
         self.playlistData = sparsePlaylists
         self.playlists = playlists 
-        self.songs = songs
+        self.tracks = tracks
         self.initModel(reTrain)
     
     def initModel(self, reTrain):
@@ -25,11 +18,13 @@ class NNeighClassifier():
         """
         libContents = os.listdir("lib")
         if self.pathName not in libContents or reTrain:
+            print("Retraining model.")
             self.model = NearestNeighbors(
                 n_neighbors=60,
                 metric="cosine")
             self.trainModel(self.playlistData)
         else:
+            print(f"Evaluating model that is stored at {self.pathName}")
             self.model = pickle.load(open(f"lib/{self.pathName}", "rb"))
     
     def trainModel(self, data):
@@ -64,14 +59,14 @@ class NNeighClassifier():
         return scores
         # return list(predictedSet)
     
-    def predict(self, X, numPredictions, songs, numNeighbours=60):
+    def predict(self, X, numPredictions, tracks, numNeighbours=60):
         """
         """
         pid, pTracks = X["pid"], X["tracks"]
-        sparseX = playlistToSparseMatrixEntry(X, self.songs)
+        sparseX = playlistToSparseMatrixEntry(X, self.tracks)
         neighbors = self.getNeighbors(sparseX, numNeighbours) # PlaylistIDs
         playlists = self.getPlaylistsFromNeighbors(neighbors, pid)
-        tracks = [getPlaylistTracks(x, self.songs) for x in playlists]
+        tracks = [getPlaylistTracks(x, self.tracks) for x in playlists]
         predictions = self.getPredictionsFromTracks(tracks, numPredictions, pTracks)
         return predictions
     

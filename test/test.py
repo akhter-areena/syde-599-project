@@ -12,7 +12,8 @@ from sklearn.preprocessing import PolynomialFeatures
 from sklearn.metrics import accuracy_score, r2_score
 
 from models.NNeighClassifier import NNeighClassifier
-from util import vis, dataIn
+from scripts import readData
+from util import vis
 from util.helpers import playlistToSparseMatrixEntry
 
 class TestTracks:

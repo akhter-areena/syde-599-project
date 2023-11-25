@@ -1,0 +1,6 @@
+# Ignore the datasets must be downloaded by user
+spotify_million_playlist_dataset/
+spotify_million_playlist_dataset_challenge/
+
+# For now we ignore all the pickled files but this is not ideal
+lib/

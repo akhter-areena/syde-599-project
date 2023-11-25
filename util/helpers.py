@@ -20,12 +20,12 @@ def getTrackandArtist(trackURI, songs):
     return (song["track_name"], song["artist_name"])
 
 
-def obscurePlaylist(playlist, percentToObscure): 
+def obscurePlaylist(orig_tracks, percentToObscure): 
     """
     Obscure a portion of a playlist's songs for testing
     """
-    k = int(len(playlist['tracks']) * percentToObscure)
-    indices = random.sample(range(len(playlist['tracks'])), k)
-    obscured = [playlist['tracks'][i] for i in indices]
-    tracks = [i for i in playlist['tracks'] + obscured if i not in playlist['tracks'] or i not in obscured]
+    k = int(len(orig_tracks) * percentToObscure)
+    indices = random.sample(range(len(orig_tracks)), k)
+    obscured = [orig_tracks[i] for i in indices]
+    tracks = [i for i in orig_tracks + obscured if i not in orig_tracks or i not in obscured]
     return tracks, obscured
