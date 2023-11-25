@@ -3,7 +3,7 @@ import pandas as pd
 from pprint import pprint
 
 from models.NNeighClassifier import NNeighClassifier
-from eval.Evaluate import Evaluate
+from eval.evaluate import Evaluate
 
 class RecommendationEngine:
     """
