@@ -47,6 +47,9 @@ class SiamNetClassifier():
 
 
 class SiamNet(nn.Module):
+    """
+    SiameseNet used for computing predictions given different input features
+    """
     def __init__(self, num_tracks):
         super(SiamNetClassifier, self).__init__()
         self.conv1 = nn.Conv1d(3, 64, 3, bias=False)
@@ -63,7 +66,7 @@ class SiamNet(nn.Module):
         self.conv4 = nn.Conv1d(128, 256, 3, bias=False)
         self.BN4 = nn.BatchNorm1d(256)
 
-        self.fc =  nn.Sequential(
+        self.MLP =  nn.Sequential(
             nn.Linear(256*283, 2048),
             nn.ReLU(),
 
@@ -73,38 +76,29 @@ class SiamNet(nn.Module):
             nn.Linear(256, num_tracks),
         )
 
-    def encode(self, x):
+    def pass_through_CNN(self, x):
         x = F.relu(self.conv1(x))
-        res_bef = F.relu(self.conv2(x))
-        # print(f'before: {res_bef.shape}')
+        residual_before = F.relu(self.conv2(x)) #used to create residual connection
 
-        x = F.relu(self.conv3_1(res_bef))
-        # print(f'after1: {x.shape}')
-
-        res_aft = F.relu(self.conv3_2(x))
-        # print(f'after2: {x.shape}')
+        x = F.relu(self.conv3_1(residual_before))
+        residual_after = F.relu(self.conv3_2(x)) #used to create residual connection
         
-        # residual connection
-        x = res_aft + res_bef
+        # concatenate to residual connection
+        x = residual_after + residual_before
         x = F.relu(self.BN4(self.conv4(x)))
         x = F.max_pool1d(x, 2)
         
         return x
 
+    def forward(self, x_songnames, x_artistnames, x_duration):
 
-    def forward(self, x):
-        x = x.reshape(-1, 3, vector_size)
-        x1 = x[:, :, :vector_size // 2]
-        x2 = x[:, :, vector_size // 2:]
-        x1 = self.encode(x1)
-        x2 = self.encode(x2)
+        x1 = self.pass_through_CNN(x_songnames)
+        x2 = self.pass_through_CNN(x_artistnames)
+        x3 = self.pass_through_CNN(x_duration)
         
-        # "splicing in channel dimensions"
-        # x = torch.cat((x1, x2), dim=1)
-        
-        # embedding
-        x = x1 + x2
+        # concatenate features
+        x = x1 + x2 + x3
 
         x = x.reshape(-1, 256*283)
-        y = self.fc(x)
-        return y
+        song_predictions = self.MLP(x)
+        return song_predictions
