@@ -6,7 +6,7 @@ class Evaluate:
     def __init__(self, tracks, model) -> None:
         self.all_tracks = tracks
         self.model = model
-        self.playlists_test = pd.read_pickle("lib/playlists_test.pkl").head(10)
+        self.playlists_test = pd.read_pickle("lib/playlists_test.pkl")
         self.percentsToObscure = [0.1, 0.25, 0.5, 0.75, 0.95]
 
     def obscurePlaylist(self, playlist, percent): 
@@ -78,11 +78,26 @@ class Evaluate:
             500, 
             self.all_tracks)
 
+        if len(obscured) == 0:
+            return 0,0,0
         rPrecision = self.computeRPrecision(predictions, obscured)
         ndcg = self.computeNDCG(predictions, obscured)
         recommendedSongsClicks = self.computeRecommendedSongsClicks(predictions, obscured)
 
         return rPrecision, ndcg, recommendedSongsClicks
+
+    '''
+    Method run once to obscure parts of the dataset for use later.
+    '''
+    def obscure_and_save(self):
+        for percent in self.percentsToObscure:
+            # Generate obscured playlist and remaining (GT) tracks
+            self.playlists_test[[f'obscuredTracks@_{percent}', f'remainingTracks@_{percent}']] = (
+                self.playlists_test.apply(self.obscurePlaylist, args=(percent,), axis=1, result_type="expand")
+            )
+            # save the obscured dataframe for later use
+            self.playlists_test.to_pickle(f"lib/playlists_test_{str(percent)}_obscured.pkl")
+        return
 
     def evaluate(self):
         print(f"Evaluating model on {len(self.playlists_test)} test playlists.")
@@ -94,8 +109,9 @@ class Evaluate:
 
         # Compute metrics at each level of obscurity
         for percent in self.percentsToObscure:
-            # Generate obscured playlist and remaining (GT) tracks
-            self.playlists_test[[f'obscuredTracks@_{percent}', f'remainingTracks@_{percent}']] = self.playlists_test.apply(self.obscurePlaylist, args=(percent,), axis=1, result_type="expand")
+
+            # Retrieve obscured playlist dataframe for this percentage
+            self.playlists_test = pd.read_pickle(f"lib/playlists_test_{str(percent)}_obscured.pkl")
             
             # Compute metrics for each playlist
             self.playlists_test[[f'rPrecision@_{percent}', f'NDCG@_{percent}', f'recommendedSongsClicks@_{percent}']] = self.playlists_test.apply(self.computeMetrics, args=(percent,), axis=1, result_type="expand")

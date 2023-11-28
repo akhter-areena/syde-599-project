@@ -61,6 +61,9 @@ class NNeighClassifier():
     
     def predict(self, X, numPredictions, tracks, numNeighbours=60):
         """
+            X: the playlist we are doing predictions on
+            numPredictions: we are doing 500 for this challenge
+            tracks: tracks from which we choose / recommend (typically all in collecitons)
         """
         pid, pTracks = X["pid"], X["tracks"]
         sparseX = playlistToSparseMatrixEntry(X, self.tracks)
