@@ -1,4 +1,6 @@
+import math
 import random
+import numpy as np
 from scipy.sparse import dok_matrix
 
 def playlistToSparseMatrixEntry(playlist, songs):
@@ -22,27 +24,55 @@ def getTrackandArtist(trackURI, songs):
     return (song["track_name"], song["artist_name"])
 
 
+#NOTE: potential place to check if song stuff is being weird
 def getTracksFromSparseID(ids, songs):
-    return [songs[songs['sparse_id'] == i].index[0] for i in ids]
+    return [songs[songs['sparse_id'] == i].index[i] for i in ids]
 
 
-def getGroundTruthFromPlaylistID(playlist_id, sparse_matrix, playlists, num_samples=20):
+def getGroundTruthFromPlaylistID(
+    playlist_id,
+    sparse_matrix,
+    # mappings,
+    # playlists,
+    num_samples=20
+):
     """
         playlist_id:    should correspond with a playlist's sparse_id
         sparse_matrix:  the sparseMatrix for the entire song dataset
         playlists:      dataframe containing playlist information
         num_samples:    number of samples of TRUE and FALSE song values to check
     """
-    # 1. get length of playlist
-    playlist_length = playlists[playlists['pid'] == playlist_id].loc[0]['num_tracks']
-    num_samples = min(playlist_length, num_samples)
+    # 1. get actual playlist ID
+    # playlist_id = mappings[mappings.index == idx].loc[idx]['Playlist Df Id']
+    # print(f"given playlist id: {idx}, mapped playlist id: {playlist_id}")
 
-    # 2. obtain num_samples songs that ARE in the playlist (sparse_ids)
-    # 3. obtain num_samples songs that ARE NOT in the playlist (sparse_ids)
+    # 2. get length of playlist
+    # playlist_length = playlists[playlists['pid'] == playlist_id].loc[playlist_id]['num_tracks']
+    # num_samples = min(playlist_length, num_samples)
+    # print(f"num_samples is: {num_samples}")
+
+    array_songs_in_playlist_idx = sparse_matrix[playlist_id]
+
+    # 3. obtain num_samples songs that ARE in the playlist (sparse_ids)
+    # 4. obtain num_samples songs that ARE NOT in the playlist (sparse_ids)
+    sparse_ids_in_play, sparse_ids_not_in_play = [], []
+    for index, num in enumerate(array_songs_in_playlist_idx): #FIX THIS
+        if num != 0.0:
+            sparse_ids_in_play.append(index)
+        else:
+            sparse_ids_not_in_play.append(index)
     
-    # 4. return sparse_ids
+    num_samples = min(num_samples, len(sparse_ids_in_play))
+    ids_in_playlist = list(np.random.choice(sparse_ids_in_play, size=num_samples))
+    ids_not_in_playlist = list(np.random.choice(sparse_ids_not_in_play, size=num_samples))
 
-    pass
+    ids_in_playlist.extend(ids_not_in_playlist)
+    # 5. return sparse_ids
+    return ids_in_playlist, num_samples
+
+
+def get_output_size(input_size, padding, stride, kernel):   
+    return math.floor((input_size + 2*padding - kernel)/stride) + 1
 
 
 def obscurePlaylist(orig_tracks, percentToObscure): 
