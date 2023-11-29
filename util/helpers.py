@@ -24,9 +24,12 @@ def getTrackandArtist(trackURI, songs):
     return (song["track_name"], song["artist_name"])
 
 
-#NOTE: potential place to check if song stuff is being weird
-def getTracksFromSparseID(ids, songs):
-    return [songs[songs['sparse_id'] == i].index[i] for i in ids]
+def getTracksFromSparseID(ids, songs, track_mappings):
+    np_ids = np.array(ids)
+    sparse_ids = track_mappings[track_mappings['My Matrix Id'].isin(np_ids)]['Sparse Id']
+    track_ids = songs[songs['sparse_id'].isin(sparse_ids)].index
+
+    return track_ids
 
 
 def getGroundTruthFromPlaylistID(

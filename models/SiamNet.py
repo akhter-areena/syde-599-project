@@ -75,7 +75,7 @@ class SiamNetClassifier():
         test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size = 5)
         return train_dataloader, test_dataloader
 
-    def trainModel(self, train_dataloader, test_dataloader, num_epochs=50, device='cpu'): #TODO change num_epochs back
+    def trainModel(self, train_dataloader, test_dataloader, num_epochs=1, device='cpu'):
         train_losses = []
         test_losses = []
         train_metrics = []
@@ -91,8 +91,15 @@ class SiamNetClassifier():
             # train_metrics.append(train_acc)
             # test_metrics.append(test_acc)
         
+        self.saveModel()
+
         return train_losses, train_metrics, test_losses, test_metrics
         #NOTE returning these in case we wish to plot the training curves during development
+
+    def saveModel(self):
+        """
+        """
+        pickle.dump(self.model, open(f"lib/{self.pathName}", "wb"))
 
     def _train(self, epoch, train_loader, device="cpu"):
         # print("in train")
@@ -120,9 +127,13 @@ class SiamNetClassifier():
             optimizer.zero_grad()
             # print("about to do inputs.to(device)")
             inputs_x1, inputs_x2 = inputs['song_names'], inputs['artist_names']
+            print(inputs_x1.shape)
             inputs_x1, inputs_x2 = inputs_x1.to(device), inputs_x2.to(device)
             # print("about to do forward pass")
             outputs = self.model(inputs_x1, inputs_x2)
+            print(outputs.shape)
+            import sys
+            sys.exit()
             # print("done forward pass")
 
             # we wish to fit to some of the ground truth, but not every single
@@ -148,18 +159,14 @@ class SiamNetClassifier():
             # Track some values to compute statistics
             total_loss += loss.item()
 
-            all_targets.extend(targets)
-            all_predictions.extend(outputs_for_loss.detach())
+            all_targets.extend(targets.tolist())
+            all_predictions.extend(outputs_for_loss.detach().tolist())
 
             # Save loss every 100 batches
             if (i % 100 == 0) and (i > 0):
                 running_loss = total_loss / (i + 1)
                 loss_history.append(running_loss)
             
-            # #TODO: remove
-            # if i == 0:
-            #     break
-
         # NOTE: really all this is telling us is how many of the 40 sampled songs are labelled correctly
         acc = mean_squared_error(all_targets, all_predictions)
         final_loss = total_loss / len(train_loader)
@@ -199,30 +206,26 @@ class SiamNetClassifier():
                 all_targets.extend(targets)
                 all_predictions.extend(outputs_for_loss.detach())
 
-            # #TODO: remove
-            # if i == 0:
-            #     break
-
         # NOTE: really all this is telling us is how many of the 40 sampled songs are labelled correctly
         acc = mean_squared_error(all_targets, all_predictions)
         final_loss = total_loss / len(test_loader)
         print(f"Epoch {epoch + 1} done. Average test loss = {final_loss:.2f}, average test accuracy = {acc * 100:.3f}%")
         return acc, final_loss
 
-    def getPredictionsFromTracks(self, model_output, playlist_tracks, num_predictions):
+    def getPredictionsFromTracks(self, model_output, playlist_tracks, num_predictions, track_mappings):
         # 1: obtain an ID for each entry in the model output
         # 2: sort the model output in descending order
         sorted_song_IDs_asc = np.argsort(model_output)
-        sorted_song_IDs = sorted_song_IDs_asc[::-1]
 
         # 3: obtain songs based on IDX
-        predicted_tracks = getTracksFromSparseID(ids=sorted_song_IDs, songs=self.tracks)
+        predicted_tracks = getTracksFromSparseID(ids=sorted_song_IDs_asc[0], songs=self.tracks, track_mappings=track_mappings)
         
         # 4: loop through until we have found 500 unique new songs
         curr_count = 0
         tracks_to_return = []
+        print("right before loop")
         while curr_count < num_predictions:
-            for track in predicted_tracks:
+            for track in reversed(predicted_tracks):
                 if track not in playlist_tracks:
                     tracks_to_return.append(track)
                 curr_count += 1
@@ -233,7 +236,8 @@ class SiamNetClassifier():
         X,
         num_predictions,
         embeddings_song=np.load("lib/song_names_test.npy"),
-        embeddings_artist=np.load("lib/artist_names_test.npy")
+        embeddings_artist=np.load("lib/artist_names_test.npy"),
+        track_mappings = pd.read_pickle("lib/mappings_pd.pkl")
     ):
         """
         Method used to collect predictions from model output and 
@@ -242,16 +246,23 @@ class SiamNetClassifier():
             embeddings_file:    contains the embeddings that can be used to 
         NOTE: removed the ability to pass track set in and instead will always use all tracks. can add back if necessary
         """
-        pid, pTracks = X["pid"], X["tracks"] #NOTE: we need to make sure that we update the playlists_test w the appropriate test playlists
+        pid, pTracks = X["pid"], X["tracks"]
 
-        playlist_name_embeddings, playlist_song_embeddings = embeddings_song[pid], embeddings_artist[pid]
+        print(pid)
 
+        pid_internal = self.test_mapped_to_PID[self.test_mapped_to_PID['Playlist Df Id'] == pid]['Matrix id']
+
+        playlist_name_embeddings, playlist_song_embeddings = embeddings_song[int(pid_internal)], embeddings_artist[int(pid_internal)]
+        playlist_name_embeddings = torch.tensor(playlist_name_embeddings)
+        playlist_song_embeddings = torch.tensor(playlist_song_embeddings)
+
+        self.model.eval()
         model_output = self.model(playlist_name_embeddings, playlist_song_embeddings)
+        model_output = model_output.detach()
         # sort the song outputs
-        predicted_songs = self.getPredictionsFromTracks(model_output, pTracks, num_predictions)
+        predicted_songs = self.getPredictionsFromTracks(model_output, pTracks, num_predictions, track_mappings)
 
         return predicted_songs
-
 
 
 class SiamNet(nn.Module):
@@ -275,14 +286,15 @@ class SiamNet(nn.Module):
         # self.BN4 = nn.BatchNorm1d(256)
 
         self.MLP =  nn.Sequential(
-            nn.Linear(20480, 2048),
+            nn.Linear(4096*5, 2048), #20480
             nn.ReLU(),
 
-            nn.Linear(2048, 1857),
+            nn.Linear(2048, 1857), #1857 is the num tracks
             nn.Sigmoid(),
         )
 
     def pass_through_CNN(self, x):
+        x = x.repeat(5,1,1) #TODO: delete this for training
         x = x.type(torch.float32)
         residual_before = F.relu(self.conv1(x))
         # residual_before = F.relu(self.conv2(x)) #used to create residual connection
@@ -297,13 +309,12 @@ class SiamNet(nn.Module):
         return x
 
     def forward(self, x_songnames, x_artistnames):
-
         x1 = self.pass_through_CNN(x_songnames)
         x2 = self.pass_through_CNN(x_artistnames)
 
         # concatenate features
         x = x1 + x2
 
-        x = x.reshape(-1, 20480)
+        x = x.reshape(-1, 4096*5)
         song_predictions = self.MLP(x)
         return song_predictions

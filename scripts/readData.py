@@ -38,6 +38,7 @@ def processPlaylistForClustering(full_playlists, playlists_to_store, tracks):
         trackIDX = [IDtoIDX.get(i) for i in trackID]
         
         # Set index to 1 if playlist has song
+        #                   (playlist, track)
         playlistSongSparse[playlistIDX, trackIDX] = 1 
 
     return playlistSongSparse.tocsr(), IDtoIDX
