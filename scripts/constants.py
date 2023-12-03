@@ -1,0 +1,2 @@
+TRAIN_SIZE = 25
+TEST_SIZE = 5

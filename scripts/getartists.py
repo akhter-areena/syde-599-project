@@ -4,6 +4,7 @@ from gensim.models import Word2Vec
 import pandas as pd
 import pandas as pd
 import numpy as np
+from constants import TEST_SIZE, TRAIN_SIZE
 from sklearn.manifold import TSNE
 
 
@@ -49,7 +50,7 @@ all_sparse_ids = []
 train_playlist_artists = []
 train_playlist_sparse_ids = []
 
-for i in tqdm(playlists_train['tracks'].values[:25]):
+for i in tqdm(playlists_train['tracks'].values[:TRAIN_SIZE]):
     artist_names = artists[artists.index.isin(i)]['artist_name']
     artist_ids = list(pd.merge(artist_names, artists_to_id,
                       how="left")['artist_index'])
@@ -69,7 +70,7 @@ print("GET ARTIST IDS AND SPARSE IDS FOR EACH TEST PLAYLIST....")
 test_playlist_artists = []
 test_playlist_sparse_ids = []
 
-for i in tqdm(playlists_test['tracks'].values[:5]):
+for i in tqdm(playlists_test['tracks'].values[:TEST_SIZE]):
     artist_names = artists[artists.index.isin(i)]['artist_name']
     artist_ids = list(pd.merge(artist_names, artists_to_id,
                       how="left")['artist_index'])

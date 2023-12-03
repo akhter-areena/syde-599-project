@@ -4,11 +4,12 @@ from gensim.models import Word2Vec
 import pandas as pd
 import pandas as pd
 import numpy as np
+from constants import TEST_SIZE, TRAIN_SIZE
 from sklearn.manifold import TSNE
 
 
 PATH_TO_PLAYLIST_DATA = r"lib"
-NUM_COMPONENTS = 3
+NUM_COMPONENTS = 7
 
 print("GET DATA....")
 
@@ -39,7 +40,7 @@ all_sparse_ids = []
 # Populate train matrix consisting of playlists where each playlist consists of song ids
 train_playlist_songs = []
 
-for i in tqdm(playlists_train['tracks'].values[:25]):
+for i in tqdm(playlists_train['tracks'].values[:TRAIN_SIZE]):
     train_playlist_songs.append(list(songs[songs.index.isin(i)]["sparse_id"]))
     unique_ids = songs[songs.index.isin(i)]["sparse_id"].unique()
 
@@ -51,7 +52,7 @@ print("POPULATE TEST SONG ID MATRIX...")
 # Populate test matrix consisting of playlists where each playlist consists of song ids
 test_playlist_songs = []
 
-for i in tqdm(playlists_test['tracks'].values[:5]):
+for i in tqdm(playlists_test['tracks'].values[:TEST_SIZE]):
     test_playlist_songs.append(list(songs[songs.index.isin(i)]["sparse_id"]))
 
     unique_ids = songs[songs.index.isin(i)]["sparse_id"].unique()
@@ -74,7 +75,7 @@ mappings = {id: index for index, id in enumerate(unique_np_sparse)}
 print("IMPORT MODEL...")
 
 # import model
-model = Word2Vec.load("lib/song_name2vec.model")
+model = Word2Vec.load(f"lib/song_name2vec.model")
 
 # Train matrix
 print("GET FINAL TRAIN MATRIX OF ALL PLAYLISTS AND ALL SONGS....")
@@ -84,7 +85,7 @@ num_components = NUM_COMPONENTS
 train_playlistSong = np.full(
     (len(train_playlist_songs), len(unique_np_sparse), num_components), -5)
 new_sparse_matrix = np.full(
-    (len(train_playlist_songs), len(unique_np_sparse)), 0)
+    (len(train_playlist_songs) + len(test_playlist_songs), len(unique_np_sparse)), 0)
 
 for i in tqdm(range(len(train_playlist_songs))):
     # Get playlist and sparse ids from DF
@@ -99,7 +100,7 @@ for i in tqdm(range(len(train_playlist_songs))):
     # Get embeddings
     embeddings = model.wv[curr_playlist_sparse_ids]
 
-    tsne = TSNE(n_components=NUM_COMPONENTS, perplexity=5)
+    tsne = TSNE(n_components=NUM_COMPONENTS, perplexity=5, method="exact")
     small_embeddings = tsne.fit_transform(embeddings)
 
     # Set index to embedding if playlist has song
@@ -112,7 +113,7 @@ for i in tqdm(range(len(train_playlist_songs))):
 print("GET FINAL TEST MATRIX OF ALL PLAYLISTS AND ALL SONGS....")
 
 test_playlistSong = np.full(
-    (len(test_playlist_songs), len(songs), num_components), -5)
+    (len(test_playlist_songs), len(unique_np_sparse), num_components), -5)
 
 for i in tqdm(range(len(test_playlist_songs))):
     # Get playlist and sparse ids from DF
@@ -124,17 +125,21 @@ for i in tqdm(range(len(test_playlist_songs))):
     # Get embeddings
     embeddings = model.wv[curr_playlist_sparse_ids]
 
-    tsne = TSNE(n_components=NUM_COMPONENTS, perplexity=5)
+    tsne = TSNE(n_components=NUM_COMPONENTS, perplexity=5, method="exact")
     small_embeddings = tsne.fit_transform(embeddings)
 
     # Set index to embedding if playlist has song
     test_playlistSong[playlistIDX, curr_playlist_song_ids] = small_embeddings
-    new_sparse_matrix[playlistIDX, curr_playlist_song_ids] = 1
+    new_sparse_matrix[playlistIDX +
+                      len(train_playlist_songs), curr_playlist_song_ids] = 1
 
 # Pickle file the outputs
 
 print("SAVE FINAL SONG AND PLAYLIST MATRICES TO FILE")
 
-np.save("lib/song_names_train", train_playlistSong, allow_pickle=True)
-np.save("lib/song_names_test", test_playlistSong, allow_pickle=True)
-np.save("lib/new_sparse_matrix", new_sparse_matrix, allow_pickle=True)
+np.save(f"lib/song_names_train",
+        train_playlistSong, allow_pickle=True)
+np.save(f"lib/song_names_test",
+        test_playlistSong, allow_pickle=True)
+np.save(f"lib/new_sparse_matrix",
+        new_sparse_matrix, allow_pickle=True)
