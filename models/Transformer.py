@@ -53,12 +53,14 @@ class TransformerClassifier():
         # TODO uncomment and fix
         # self.test_mapped_to_PID = pd.read_pickle("lib/test_playlist_mappings.pkl")
         self.songs_lookup = pd.read_pickle("lib/embeddings_to_sparse_ids.pkl") 
+        print(self.songs_lookup.head())
         self.num_songs = len(self.songs_lookup['song_embeddings'])
+        self.test_mapped_to_PID = pd.read_pickle("lib/test_playlist_mappings.pkl")
         print("Initalizing Model")
         self.initModel(reTrain, device=device)
     
     # DONE
-    def initModel(self, reTrain, device="cpu"):
+    def initModel(self, reTrain, device="mps"):
         libContents = os.listdir("lib")
         if self.pathName not in libContents or reTrain:
             print("Retraining model.")
@@ -112,7 +114,7 @@ class TransformerClassifier():
     def saveModel(self):
         pickle.dump(self.model, open(f"lib/{self.pathName}", "wb"))
 
-    def train(self, train_loader, optimizer, device="cpu", epoch=-1):
+    def train(self, train_loader, optimizer, device="mps", epoch=-1):
         """
         Trains a model for one epoch (one pass through the entire training data).
 
@@ -169,7 +171,7 @@ class TransformerClassifier():
         print(f"Epoch {epoch + 1} done. Average train loss = {final_loss:.10f}")
         return final_loss
     
-    def test(self, test_loader, device="cpu", epoch=-1):
+    def test(self, test_loader, device="mps", epoch=-1):
         """
         Tests a model for one epoch of test data.
 
@@ -242,6 +244,7 @@ class TransformerClassifier():
         X,
         num_predictions,
         song_names_test=np.load("lib/sparse_ids_train.npy", allow_pickle=True),
+        device="mps"
     ):
         """
         Method used to collect predictions from model output and 
@@ -257,16 +260,16 @@ class TransformerClassifier():
         # NOTE: this is because the sparse matrix for some reason did not populate with the order of the PIDs, 
         # so we would be passing in something like 27105, 11028, etc, when they live in the playlist test reference object as 0,1,2 etc.
         # @areena see our imessage photos for reference
-        pid_vocab = self.test_mapped_to_PID[self.test_mapped_to_PID['Playlist Df Id'] == pid]['Matrix id']
+        pid_vocab = self.test_mapped_to_PID[self.test_mapped_to_PID['Playlist Df Id'] == pid]['Matrix id'][0]
     
+        print(f"pid vocab: {pid_vocab}")
         # get playlist embeddings for this playlist
-        playlist_info = song_names_test[int(pid_vocab)]
-        playlist_song_sparse_ids = playlist_info[pid_vocab]
+        playlist_song_sparse_ids = song_names_test[int(pid_vocab)]
         songs_vocab_ids = []
         for i in playlist_song_sparse_ids:
             # grab the id of the song in the internal vocabulary,
             #  and add 2 to it since the embedding lookup table has the padding and CLS at indices 0 and 1
-            songs_vocab_ids.append(self.songs_list[self.songs_list['sparse_ids'] == i].index[0] + 2)
+            songs_vocab_ids.append(self.songs_lookup[self.songs_lookup['sparse_ids'] == i].index[0] + 2)
         full_padded_input = [1]
         full_padded_input.extend(songs_vocab_ids)
         len_curr = len(full_padded_input)
@@ -276,7 +279,7 @@ class TransformerClassifier():
             padding = torch.zeros([1,100-len_curr], dtype=int)
             padding = padding.squeeze(0).tolist()
             full_padded_input.extend(padding)
-        input_for_model = self.model.input_embeddings(full_padded_input)
+        input_for_model = self.model.input_embeddings(torch.tensor(full_padded_input, dtype=int).to(device))
 
         # get model prediction
         self.model.eval()

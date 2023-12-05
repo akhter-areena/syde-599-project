@@ -4,7 +4,7 @@ import numpy as np
 from pprint import pprint
 
 from models.NNeighClassifier import NNeighClassifier
-from models.SiamNet import SiamNetClassifier
+# from models.SiamNet import SiamNetClassifier
 from models.Transformer import TransformerClassifier
 from eval.Evaluate import Evaluate
 
@@ -39,7 +39,6 @@ class RecommendationEngine:
         self.playlists_test = pd.read_pickle("lib/playlists_test.pkl")
         self.tracks = pd.read_pickle("lib/tracks.pkl")
         self.playlistSparse = pd.read_pickle("lib/playlistSparse.pkl")
-        self.playlistSparseForCNN = np.load("lib/new_sparse_matrix.npy")
         print(f"Working with {len(self.playlists_train)} playlists " + 
             f"and {len(self.tracks)} tracks")
     
@@ -121,15 +120,15 @@ def main():
     # )
 
     #TODO: DANA THIS NEEDS TO WORK SO WE GET EVALUATION METRICS FOR THE CURRENT PICKLED MODEL.
-    # evaluator = Evaluate(
-    #     tracks=recommender.tracks,
-    #     model=recommender.models['trans']
-    # )
+    evaluator = Evaluate(
+        tracks=recommender.tracks,
+        model=recommender.models['trans']
+    )
     
-    # if args.first_test:
-    #     evaluator.obscure_and_save()
+    if args.first_test:
+        evaluator.obscure_and_save()
 
-    # pprint(evaluator.evaluate())
+    pprint(evaluator.evaluate())
 
 if __name__ == "__main__":
     main()
