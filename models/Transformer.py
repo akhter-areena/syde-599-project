@@ -46,11 +46,13 @@ class PlaylistDataset(Dataset):
 
 class TransformerClassifier():
     # TODO: add more to init?
-    def __init__(self):
+    def __init__(self, reTrain=False, name="TransformerNet.pkl"):
         self.name = "Transformer"
+        self.pathName = name
         self.test_mapped_to_PID = pd.read_pickle("lib/test_playlist_mappings.pkl")
-        self.song_embeddings = pd.read_pickle("lib/transformer/songs.pkl") 
-        #TODO finish this
+        self.songs_lookup = pd.read_pickle("lib/transformer/songs.pkl") 
+        
+        self.initModel(reTrain)
     
     # DONE
     def initModel(self, reTrain):
@@ -68,15 +70,15 @@ class TransformerClassifier():
             print(f"Evaluating model that is stored at {self.pathName}")
             self.model = pickle.load(open(f"lib/{self.pathName}", "rb"))
 
-    # TODO - Maria
-    def getDataloaders():
+    # DONE
+    def getDataloaders(self):
         song_names_train = np.load("lib/transformer/song_names_train_1.npy", allow_pickle=True)
         song_names_test = np.load("lib/transformer/song_names_test.npy", allow_pickle=True)
         artist_names_train = np.load("lib/transformer/song_names_train_1.npy", allow_pickle=True)  #TODO change to artists!! this is a placeholder!!
         artist_names_test = np.load("lib/transformer/song_names_test.npy", allow_pickle=True) #TODO change to artists!! this is a placeholder!!
 
-        train_dataset = PlaylistDataset(song_names_train, artist_names_train)
-        test_dataset = PlaylistDataset(song_names_test, artist_names_test)
+        train_dataset = PlaylistDataset(song_names_train, self.songs_lookup)
+        test_dataset = PlaylistDataset(song_names_test, self.songs_lookup)
 
         train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size = 5)
         test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size = 5)
@@ -132,14 +134,23 @@ class TransformerClassifier():
         print(f"Epoch {epoch + 1} done. Average train loss = {final_loss:.2f}")
         return final_loss
 
-    # TODO
-    def getPredictionsFromTracks(self, model_output, playlist_tracks, num_predictions, track_mappings):
+    # DONE
+    def getPredictionsFromTracks(
+        self, 
+        model_output, 
+        playlist_tracks, 
+        num_predictions, 
+        all_tracks = pd.read_pickle("lib/tracks.pkl")
+    ):
         # 1: obtain an ID for each entry in the model output
         # 2: sort the model output in descending order
         sorted_song_IDs_asc = np.argsort(model_output)
 
-        # 3: obtain songs based on IDX
-        predicted_tracks = None #TODO this will be from the dataframe containing lookup maps
+        # 3: obtain songs based on IDX --> NOTE this used to happen in a utility function but i cannot be bothered
+        predicted_tracks = []
+        for song_id in sorted_song_IDs_asc:
+            sparse_id = self.songs[self.songs.index == song_id]['sparse_ids'][song_id]
+            predicted_tracks.append(all_tracks[all_tracks['sparse_id'] == sparse_id].index[0])
 
         # 4: loop through until we have found 500 unique new songs
         curr_count = 0
@@ -153,13 +164,11 @@ class TransformerClassifier():
 
         return tracks_to_return
 
-    # TODO - Maria
+    # DONE
     def predict(self, 
         X,
         num_predictions,
-        embeddings_song=np.load("lib/song_names_test.npy"),
-        embeddings_artist=np.load("lib/artist_names_test.npy"),
-        track_mappings = pd.read_pickle("lib/mappings_pd.pkl")
+        song_names_test=np.load("lib/transformer/song_names_test.npy"),
     ):
         """
         Method used to collect predictions from model output and 
@@ -172,17 +181,35 @@ class TransformerClassifier():
 
         # this should be the same as the previous implementation because the train 
         # and test playlists are being grabbed in the same order as before
-        pid_internal = self.test_mapped_to_PID[self.test_mapped_to_PID['Playlist Df Id'] == pid]['Matrix id']
+        # NOTE: this is because the sparse matrix for some reason did not populate with the order of the PIDs, 
+        # so we would be passing in something like 27105, 11028, etc, when they live in the playlist test reference object as 0,1,2 etc.
+        # @areena see our imessage photos for reference
+        pid_vocab = self.test_mapped_to_PID[self.test_mapped_to_PID['Playlist Df Id'] == pid]['Matrix id']
+    
+        # get playlist embeddings for this playlist
+        playlist_info = song_names_test[int(pid_vocab)]
+        playlist_song_sparse_ids = playlist_info[pid_vocab]
+        songs_vocab_ids = []
+        for i in playlist_song_sparse_ids:
+            # grab the id of the song in the internal vocabulary,
+            #  and add 2 to it since the embedding lookup table has the padding and CLS at indices 0 and 1
+            songs_vocab_ids.append(self.songs_list[self.songs_list['sparse_ids'] == i].index[0] + 2)
+        full_padded_input = [1]
+        full_padded_input.extend(songs_vocab_ids)
+        len_curr = len(full_padded_input)
+        if len_curr > 100:
+            full_padded_input = full_padded_input[:100]
+        elif len_curr < 100:
+            padding = torch.zeros([1,100-len_curr], dtype=int)
+            padding = padding.squeeze(0).tolist()
+            full_padded_input.extend(padding)
+        input_for_model = self.model.input_embeddings(full_padded_input)
 
-        playlist_name_embeddings, playlist_song_embeddings = embeddings_song[int(pid_internal)], embeddings_artist[int(pid_internal)]
-        playlist_name_embeddings = torch.tensor(playlist_name_embeddings)
-        playlist_song_embeddings = torch.tensor(playlist_song_embeddings)
-
+        # get model prediction
         self.model.eval()
-        model_output = self.model(playlist_name_embeddings, playlist_song_embeddings)
-        model_output = model_output.detach()
+        model_output = self.model(input_for_model)
         # sort the song outputs
-        predicted_songs = self.getPredictionsFromTracks(model_output, pTracks, num_predictions, track_mappings)
+        predicted_songs = self.getPredictionsFromTracks(model_output, pTracks, num_predictions)
 
         return predicted_songs
 
@@ -204,22 +231,25 @@ class SongAndPlaylistEmbeddings(nn.Embedding):
         artist_embeds = torch.tensor(np.array(self.artist_embeddings['song_embeddings'].tolist())) #TODO change to artist_embeddings!!!! placeholder!!
 
         # element-wise addition of embeddings (should work if they are the same dimension)
-        final_embeds = song_embeds + artist_embeds
-        # 0: PADDING
-        
-        # 1: CLS
+        concat_tokens = song_embeds + artist_embeds
+
+        # add CLS first
+        CLS_token = torch.mean(concat_tokens, dim=0, keepdim=True)
+        concat_tokens_2 = torch.cat([CLS_token, concat_tokens], dim=0)
+        # now add padding
+        padding_token = torch.zeros([1,256])
+        final_embeds = torch.cat([padding_token, concat_tokens_2], dim=0)
+
         out = nn.Parameter(torch.tensor(final_embeds, dtype=torch.float32), requires_grad=True)
 
         return out
-    
-    # NOTE the forward method is what is called when you call SongAndPlaylistEmbeddings([idx,idx,idx])
 
 
 class TransformerNet(nn.Module):
     """
     Transformer used for computing predictions given different input features
     """
-    # TODO: Dana find out n_head, n_layers, d_model is confirmed by Word2Vec
+    # TODO: Dana find out n_head, n_layers, 
     # Maxmimum playlist length  = ?
     # number of attention heads = 4 as placeholder, possible 
     def _init_(self, d_model=256, n_head=4, n_layers=3, num_songs = 1000):
@@ -233,7 +263,7 @@ class TransformerNet(nn.Module):
         # TODO: Retrieve embedding function from Maria
         # Number of embeddings = ?, 10 as a placeholder
         # num_embeddings = size of vocab (all songs)
-        self.input_embeddings = nn.Embedding(num_embeddings=num_songs, embedding_dim=d_model, padding_idx = 0)
+        self.input_embeddings = SongAndPlaylistEmbeddings(num_embeddings=num_songs, embedding_dim=d_model, padding_idx = 0)
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=self.d_model,
@@ -256,25 +286,32 @@ class TransformerNet(nn.Module):
         
         # Inputs --> Embeddings
         transformer_inputs = self.input_embeddings(input_ids)
+        print("Input to transformer encoder size: ", transformer_inputs.shape)
         # Embeddings --> Transformer
         outputs = self.transformer_encoder(transformer_inputs, src_key_padding_mask=padding_mask)
+        print("Shape of outputs after transformer encoder: ", outputs.shape)
         # Check size
-
+        print
         # TODO: Confirm with Areena that this is what she meant by CLS token
         outputs = outputs[:,0,:].squeeze()
+        print("Expected shape after fitler and squeeze: (Batch, embedding size = 256)")
+        print("Output after CLS filter and squeeze: ", outputs.shape)
 
         # TODO: Confirm this is the expected shape
         # (Batch, embedding size = 256)
-        print(outputs.shape)
         
         # Transformer --> Linear output layer
         # TODO: Confirm linear goes after squeeze
         outputs = self.output_layer(outputs)
+        print("Expected shape: (B, num_songs)")
+        print("Actual shape after linear layer, before signmoid: ", outputs.shape)
 
         # Now apply sigmoid
         # Dimensions should be (B, num_songs)
         song_predictions = nn.Sigmoid(outputs)
 
         # Dimensions of song_predictions shoudl be (1, num_songs)
+        print("Song prediction shape (after sigmoid): ", song_predictions.shape)
+
         return song_predictions
         
