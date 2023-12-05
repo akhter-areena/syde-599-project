@@ -19,10 +19,11 @@ class RecommendationEngine:
         tracks (DataFrame): all tracks read into memory
         playlistSparse (scipy.CSR matrix) playlists formatted for predictions
     """
-    def __init__(self, models, train):
+    def __init__(self, models, train, device="cpu"):
         # Read in the relevant train, test data and features
         self.readData()
         self.train = train
+        self.device = device
 
         # Initialize an empty model dictionary
         self.models = self.buildClassifiers(models)
@@ -76,7 +77,8 @@ class RecommendationEngine:
             playlists=self.playlists_all,
             sparsePlaylists=self.playlistSparseForCNN,
             tracks=self.tracks,
-            reTrain=train
+            reTrain=train,
+            device=self.device
         ) 
     
 def main():
@@ -85,6 +87,9 @@ def main():
     parser.add_argument('-m', '--models', help='Enter models you want delimited by ,', type=str)
     parser.add_argument('-t', '--train', action='store_true')
     parser.add_argument('-f', '--first_test', action='store_true')
+    parser.add_argument('-a', '--mac', action='store_true', help='Set is using mac')
+    parser.add_argument('-g', '--colab', action='store_true', help='Set is using cuda')
+
     args = parser.parse_args()
 
     model_names = [str(model) for model in args.models.split(',')]
@@ -97,7 +102,8 @@ def main():
     print(f"Training is set to: {args.train}")
     recommender = RecommendationEngine(
         models=model_names, 
-        train=args.train)
+        train=args.train,
+        device= "mps" if args.mac else "cuda" if args.colab else "cpu")
 
     # Evaluate the models 
     #TODO: same as above, make the model choose between passed-in options
@@ -106,15 +112,16 @@ def main():
     #     model=recommender.models['nnc']
     # )
 
-    evaluator = Evaluate(
-        tracks=recommender.tracks,
-        model=recommender.models['cnn']
-    )
+    # NOTE comment out when you want to isolate training!
+    # evaluator = Evaluate(
+    #     tracks=recommender.tracks,
+    #     model=recommender.models['cnn']
+    # )
     
     if args.first_test:
         evaluator.obscure_and_save()
 
-    pprint(evaluator.evaluate())
+    print(evaluator.evaluate())
 
 if __name__ == "__main__":
     main()
