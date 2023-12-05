@@ -1,7 +1,11 @@
 import math
 import random
+import torch
 import numpy as np
 from scipy.sparse import dok_matrix
+
+PADDED_IDX = 0
+CLS_IDX = 1
 
 def playlistToSparseMatrixEntry(playlist, songs):
     """
@@ -87,3 +91,54 @@ def obscurePlaylist(orig_tracks, percentToObscure):
     obscured = [orig_tracks[i] for i in indices]
     tracks = [i for i in orig_tracks + obscured if i not in orig_tracks or i not in obscured]
     return tracks, obscured
+
+def get_input_and_target(batch_input, vocabulary_length, masking_rate=0.3):
+    playlist_header = 1
+    input_length = batch_input.size(1)
+    
+    # Get the playlist song list that aren't padded.
+    playlist_songs = ~(batch_input == PADDED_IDX)
+    num_songs_in_playlists = []
+    
+    # Create the masked input as all Padded values
+    masked_input = torch.full((5, input_length), PADDED_IDX)
+    
+    # Create the target as the lenght of the total songs of all Padded.
+    # TODO Check if we need to set PADDED and CLS values as 1 in target
+    target = torch.full((5, vocabulary_length), float(PADDED_IDX))
+
+    # Loop through each playlist and create the masked input and target.
+    for i in range(playlist_songs.shape[0]):
+        # Collect the songs in the input
+        num_songs_in_playlists.append(torch.sum(playlist_songs[i]).item())
+        num_songs_in_playlist = num_songs_in_playlists[i] - playlist_header
+        
+        # Set number of songs to mask
+        num_mask = math.floor(num_songs_in_playlist*masking_rate)
+        num_keep = num_songs_in_playlist-num_mask
+        
+        # Get a random order of indicies starting after the playlist header.
+        random_indices = torch.add(torch.randperm(num_songs_in_playlist), playlist_header)
+        
+        # If the number of songs to mask is greater than 0 mask songs.
+        if num_mask > 0:
+            masked_input[i][:playlist_header] = batch_input[i][:playlist_header]
+            # Enter the songs to keep based on the random masking.
+            masked_input[i][playlist_header:num_keep+playlist_header] = batch_input[i][random_indices[:num_keep]]
+            
+            # TODO figure out what Pad and CLS should be
+        target[i][batch_input[i][random_indices[:num_keep]]] = float(0.0)
+        # print(batch_input[i][random_indices[num_keep:num_songs_in_playlist]])
+        target[i][batch_input[i][random_indices[num_keep:num_songs_in_playlist]]] = float(1.0)
+        
+        target_weights = target.clone()
+        for i in range(batch_input.size(0)):
+            num_ones = torch.sum(target_weights[i] == 1).item()
+            while num_ones > 0:
+                # TODO should we set to 2 to avoid CLS and Pad?
+                idx = random.randint(2, vocabulary_length-1)
+                if target_weights[i, idx] == 0.0:
+                    target_weights[i, idx] = 1.0
+                    num_ones -= 1
+        
+        return masked_input, target, target_weights

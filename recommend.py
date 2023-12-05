@@ -5,6 +5,7 @@ from pprint import pprint
 
 from models.NNeighClassifier import NNeighClassifier
 from models.SiamNet import SiamNetClassifier
+from models.Transformer import TransformerClassifier
 from eval.Evaluate import Evaluate
 
 class RecommendationEngine:
@@ -48,14 +49,21 @@ class RecommendationEngine:
         Init classifiers and set initial classifier as main
         """
         # TODO: would eventually read in all model names and build dict of models
-        return {
-            # 'nnc': self.buildNNC(
-            #     train=self.train
-            # ),
-            'cnn': self.buildSiamNet(
-                train=self.train
-            )
-        }
+        if model_names[0] == "trans":
+            return {
+                'trans': self.buildTransNet(train=self.train)
+            }
+        print(model_names)
+        raise RuntimeError("Should not be here")
+        # return {
+        #     # 'nnc': self.buildNNC(
+        #     #     train=self.train
+        #     # ),
+        #     'cnn': self.buildSiamNet(
+        #         train=self.train
+        #     ),
+        #     'trans': self.buildTransNet(train=self.train)
+        # }
 
     def buildNNC(self, train): 
         """
@@ -78,6 +86,12 @@ class RecommendationEngine:
             tracks=self.tracks,
             reTrain=train
         ) 
+    
+    def buildTransNet(self, train):
+        """
+        Init Transformer Classifier
+        """
+        return TransformerClassifier(reTrain=train)
     
 def main():
     # Prepare command line arguments
@@ -106,15 +120,16 @@ def main():
     #     model=recommender.models['nnc']
     # )
 
-    evaluator = Evaluate(
-        tracks=recommender.tracks,
-        model=recommender.models['cnn']
-    )
+    #TODO: DANA THIS NEEDS TO WORK SO WE GET EVALUATION METRICS FOR THE CURRENT PICKLED MODEL.
+    # evaluator = Evaluate(
+    #     tracks=recommender.tracks,
+    #     model=recommender.models['trans']
+    # )
     
-    if args.first_test:
-        evaluator.obscure_and_save()
+    # if args.first_test:
+    #     evaluator.obscure_and_save()
 
-    pprint(evaluator.evaluate())
+    # pprint(evaluator.evaluate())
 
 if __name__ == "__main__":
     main()
